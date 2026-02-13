@@ -71,9 +71,9 @@ class TenantMiddleware:
         if config.get('REQUIRED', False) and not tenant:
             raise Http404("Tenant not found")
 
-        response = self.get_response(request)
-
-        # Clear thread-local after request
-        set_current_tenant(None)
-
-        return response
+        try:
+            response = self.get_response(request)
+            return response
+        finally:
+            # Clear thread-local after request
+            set_current_tenant(None)

@@ -106,10 +106,20 @@ class TestTenantManager:
         # Unscoped: see all
         assert Project.objects.unscoped().count() == 3
 
-    def test_no_tenant_returns_all(self, projects):
-        """Test that no tenant returns all objects."""
-        # No tenant set
+    @override_settings(
+        DJUST_TENANTS={
+            "RESOLVER": "subdomain",
+            "MAIN_DOMAIN": "example.com",
+            "STRICT_MODE": False,
+        }
+    )
+    def test_no_tenant_returns_all_when_strict_off(self, projects):
+        """Test that no tenant returns all objects when STRICT_MODE=False."""
         set_current_tenant(None)
-
-        # Should see all projects
         assert Project.objects.count() == 3
+
+    def test_no_tenant_returns_none_strict_mode(self, projects):
+        """Test that no tenant returns empty queryset with default STRICT_MODE."""
+        set_current_tenant(None)
+        # Default STRICT_MODE=True returns empty
+        assert Project.objects.count() == 0

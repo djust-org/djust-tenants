@@ -43,14 +43,32 @@ class TenantManager(models.Manager):
             filter_kwargs = {self.tenant_field: tenant.obj}
             return qs.filter(**filter_kwargs)
 
+        # No tenant set — strict mode returns empty queryset (safe default)
+        if self._get_strict_mode():
+            return qs.none()
+
         return qs
 
-    def unscoped(self):
+    def _get_strict_mode(self):
+        """Check if strict mode is enabled (default: True).
+
+        When True, queries without a tenant return empty results.
+        When False, queries without a tenant return all records (backwards compat).
+        """
+        from django.conf import settings
+
+        config = getattr(settings, 'DJUST_TENANTS', {})
+        return config.get('STRICT_MODE', True)
+
+    def unscoped(self, reason=""):
         """Return unfiltered queryset (bypass tenant filtering).
+
+        Args:
+            reason (str): Audit trail reason for bypassing tenant filtering.
 
         Usage:
             # Get all projects across all tenants
-            all_projects = Project.objects.unscoped()
+            all_projects = Project.objects.unscoped(reason="admin report")
         """
         return super().get_queryset()
 

@@ -114,6 +114,18 @@ class TenantResolver(ABC):
         """
         ...
 
+    _TENANT_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_-]{1,128}$')
+
+    @staticmethod
+    def _validate_tenant_id(tenant_id: Optional[str]) -> Optional[str]:
+        """Validate tenant ID format. Returns tenant_id if valid, None if invalid."""
+        if not tenant_id:
+            return None
+        if not TenantResolver._TENANT_ID_PATTERN.match(tenant_id):
+            logger.warning("Invalid tenant ID rejected: %r", tenant_id[:128])
+            return None
+        return tenant_id
+
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get a value from DJUST_TENANTS."""
         try:
@@ -234,6 +246,7 @@ class HeaderResolver(TenantResolver):
             # Also try lowercase (some proxies normalize)
             tenant_id = request.META.get(meta_key.lower())
 
+        tenant_id = self._validate_tenant_id(tenant_id)
         if tenant_id:
             logger.debug("Resolved tenant from header %s: %s", header_name, tenant_id)
             return TenantInfo(tenant_id=tenant_id)
@@ -259,25 +272,25 @@ class SessionResolver(TenantResolver):
 
         # Try session first
         if hasattr(request, "session"):
-            tenant_id = request.session.get(session_key)
+            tenant_id = self._validate_tenant_id(str(request.session.get(session_key, "")))
             if tenant_id:
                 logger.debug("Resolved tenant from session: %s", tenant_id)
-                return TenantInfo(tenant_id=str(tenant_id))
+                return TenantInfo(tenant_id=tenant_id)
 
         # Try JWT claims (if user has jwt_payload attribute)
         if hasattr(request, "user") and hasattr(request.user, "jwt_payload"):
             jwt_claim = self.get_config("JWT_CLAIM", "tenant_id")
-            tenant_id = request.user.jwt_payload.get(jwt_claim)
+            tenant_id = self._validate_tenant_id(str(request.user.jwt_payload.get(jwt_claim, "")))
             if tenant_id:
                 logger.debug("Resolved tenant from JWT: %s", tenant_id)
-                return TenantInfo(tenant_id=str(tenant_id))
+                return TenantInfo(tenant_id=tenant_id)
 
         # Try user attribute (e.g., user.tenant_id from model)
         if hasattr(request, "user") and hasattr(request.user, "tenant_id"):
-            tenant_id = request.user.tenant_id
+            tenant_id = self._validate_tenant_id(str(request.user.tenant_id or ""))
             if tenant_id:
                 logger.debug("Resolved tenant from user.tenant_id: %s", tenant_id)
-                return TenantInfo(tenant_id=str(tenant_id))
+                return TenantInfo(tenant_id=tenant_id)
 
         return None
 

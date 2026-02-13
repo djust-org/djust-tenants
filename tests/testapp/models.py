@@ -29,3 +29,18 @@ class Project(models.Model):
 
     def __str__(self):
         return f"{self.organization.name} / {self.name}"
+
+
+class SensitiveRecord(models.Model):
+    """Test model for isolation proof tests."""
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="sensitive_records"
+    )
+    data = models.TextField()
+    secret_code = models.CharField(max_length=100)
+
+    objects = TenantManager(tenant_field="organization")
+
+    def __str__(self):
+        return f"{self.organization.name} / {self.secret_code}"

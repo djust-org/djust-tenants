@@ -58,44 +58,56 @@ Template usage::
     {{ tenant.id }}
 """
 
-from .resolvers import (
-    TenantInfo,
-    TenantResolver,
-    SubdomainResolver,
-    PathResolver,
-    HeaderResolver,
-    SessionResolver,
-    CustomResolver,
-    ChainedResolver,
-    get_tenant_resolver,
-    resolve_tenant,
-    RESOLVER_REGISTRY,
+from .audit import (
+    AuditBackend,
+    AuditEvent,
+    CallbackAuditBackend,
+    DatabaseAuditBackend,
+    LoggingAuditBackend,
+    audit_action,
+    emit_audit,
+    get_audit_backend,
 )
-
-from .mixin import (
-    TenantMixin,
-    TenantScopedMixin,
-    TenantContextProcessor,
-    context_processor,
+from .backends import (
+    TenantAwareBackendMixin,
+    TenantAwareMemoryBackend,
+    TenantAwareRedisBackend,
+    TenantPresenceManager,
+    get_tenant_presence_backend,
 )
-
+from .managers import (
+    TenantManager,
+    TenantQuerySet,
+)
 from .middleware import (
     TenantMiddleware,
     get_current_tenant,
     set_current_tenant,
 )
-
-from .managers import (
-    TenantManager,
-    TenantQuerySet,
+from .mixin import (
+    TenantContextProcessor,
+    TenantMixin,
+    TenantScopedMixin,
+    context_processor,
+)
+from .resolvers import (
+    RESOLVER_REGISTRY,
+    ChainedResolver,
+    CustomResolver,
+    HeaderResolver,
+    PathResolver,
+    SessionResolver,
+    SubdomainResolver,
+    TenantInfo,
+    TenantResolver,
+    get_tenant_resolver,
+    resolve_tenant,
 )
 
-from .backends import (
-    TenantAwareBackendMixin,
-    TenantAwareRedisBackend,
-    TenantAwareMemoryBackend,
-    TenantPresenceManager,
-    get_tenant_presence_backend,
+# AuditLog model available via djust_tenants.models (not imported here
+# to avoid AppRegistryNotReady during Django app loading)
+from .security import (
+    SecurityHeadersMiddleware,
 )
 
 __all__ = [
@@ -112,11 +124,29 @@ __all__ = [
     "get_tenant_resolver",
     "resolve_tenant",
     "RESOLVER_REGISTRY",
+    # Middleware
+    "TenantMiddleware",
+    "get_current_tenant",
+    "set_current_tenant",
+    # Managers
+    "TenantManager",
+    "TenantQuerySet",
     # Mixins
     "TenantMixin",
     "TenantScopedMixin",
     "TenantContextProcessor",
     "context_processor",
+    # Audit
+    "AuditEvent",
+    "AuditBackend",
+    "LoggingAuditBackend",
+    "DatabaseAuditBackend",
+    "CallbackAuditBackend",
+    "get_audit_backend",
+    "emit_audit",
+    "audit_action",
+    # Security
+    "SecurityHeadersMiddleware",
     # Backends
     "TenantAwareBackendMixin",
     "TenantAwareRedisBackend",
