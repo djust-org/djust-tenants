@@ -15,7 +15,29 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from ..backends.base import PresenceBackend
+
+# Simple base class for presence backends (compatible with djust)
+class PresenceBackend:
+    """Base class for presence backends.
+
+    Compatible with djust.backends.base.PresenceBackend interface.
+    """
+
+    def track(self, view_id: str, user_id: str, metadata: Optional[Dict] = None):
+        """Track a user's presence."""
+        raise NotImplementedError
+
+    def untrack(self, view_id: str, user_id: str):
+        """Remove a user's presence."""
+        raise NotImplementedError
+
+    def get_present(self, view_id: str) -> List[Dict]:
+        """Get all present users for a view."""
+        raise NotImplementedError
+
+    def cleanup(self, view_id: str, active_connection_ids: List[str]):
+        """Clean up stale presences."""
+        raise NotImplementedError
 
 logger = logging.getLogger(__name__)
 

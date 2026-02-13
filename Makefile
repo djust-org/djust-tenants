@@ -6,7 +6,8 @@ UV = uv
 
 install:
 	$(UV) venv $(VENV)
-	$(UV) pip install -e ".[dev,djust,redis,postgres]" --python $(PYTHON)
+	$(UV) pip install -e ../djust --python $(PYTHON)
+	$(UV) pip install -e ".[dev,redis,postgres]" --python $(PYTHON)
 
 test:
 	$(PYTHON) -m pytest tests/ -v

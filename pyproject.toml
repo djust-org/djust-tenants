@@ -28,7 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 djust = [
-    "djust>=0.3.0",
+    "djust>=0.3.0rc5",
 ]
 redis = [
     "redis>=5.0.0",
