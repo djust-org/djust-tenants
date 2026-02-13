@@ -20,31 +20,31 @@ Quick Start::
 
 Configuration in settings.py::
 
-    DJUST_CONFIG = {
+    DJUST_TENANTS = {
         # Tenant resolution strategy
-        'TENANT_RESOLVER': 'subdomain',  # 'subdomain', 'path', 'header', 'session', 'custom'
+        'RESOLVER': 'subdomain',  # 'subdomain', 'path', 'header', 'session', 'custom'
 
         # Subdomain options
-        'TENANT_SUBDOMAIN_EXCLUDE': ['www', 'api', 'admin'],
-        'TENANT_MAIN_DOMAIN': 'example.com',
+        'SUBDOMAIN_EXCLUDE': ['www', 'api', 'admin'],
+        'MAIN_DOMAIN': 'example.com',
 
         # Path options (example.com/acme/dashboard)
-        'TENANT_PATH_POSITION': 1,
-        'TENANT_PATH_EXCLUDE': ['admin', 'api', 'static'],
+        'PATH_POSITION': 1,
+        'PATH_EXCLUDE': ['admin', 'api', 'static'],
 
         # Header option (X-Tenant-ID header)
-        'TENANT_HEADER': 'X-Tenant-ID',
+        'HEADER_NAME': 'X-Tenant-ID',
 
         # Session option
-        'TENANT_SESSION_KEY': 'tenant_id',
+        'SESSION_KEY': 'tenant_id',
 
         # Custom resolver (dotted path to callable)
-        'TENANT_CUSTOM_RESOLVER': 'myapp.tenants.resolve_tenant',
+        'CUSTOM_RESOLVER': 'myapp.tenants.resolve_tenant',
 
         # Behavior options
-        'TENANT_REQUIRED': True,  # Raise 404 if no tenant found
-        'TENANT_DEFAULT': None,  # Default tenant if none resolved
-        'TENANT_CONTEXT_NAME': 'tenant',  # Name in template context
+        'REQUIRED': True,  # Raise 404 if no tenant found
+        'DEFAULT_TENANT': None,  # Default tenant if none resolved
+        'CONTEXT_NAME': 'tenant',  # Name in template context
 
         # Tenant-scoped presence backend
         'PRESENCE_BACKEND': 'tenant_redis',  # or 'tenant_memory'
@@ -77,6 +77,17 @@ from .mixin import (
     TenantScopedMixin,
     TenantContextProcessor,
     context_processor,
+)
+
+from .middleware import (
+    TenantMiddleware,
+    get_current_tenant,
+    set_current_tenant,
+)
+
+from .managers import (
+    TenantManager,
+    TenantQuerySet,
 )
 
 from .backends import (

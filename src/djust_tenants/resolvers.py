@@ -10,12 +10,12 @@ Supports multiple tenant identification methods:
 
 Configuration in settings.py::
 
-    DJUST_CONFIG = {
-        'TENANT_RESOLVER': 'subdomain',  # or 'path', 'header', 'session', 'custom'
-        'TENANT_HEADER': 'X-Tenant-ID',
-        'TENANT_SESSION_KEY': 'tenant_id',
-        'TENANT_CUSTOM_RESOLVER': 'myapp.tenants.resolve_tenant',  # dotted path
-        'TENANT_DEFAULT': None,  # Default tenant if none resolved
+    DJUST_TENANTS = {
+        'RESOLVER': 'subdomain',  # or 'path', 'header', 'session', 'custom'
+        'HEADER_NAME': 'X-Tenant-ID',
+        'SESSION_KEY': 'tenant_id',
+        'CUSTOM_RESOLVER': 'myapp.tenants.resolve_tenant',  # dotted path
+        'DEFAULT_TENANT': None,  # Default tenant if none resolved
     }
 """
 
@@ -44,18 +44,20 @@ class TenantInfo:
         metadata: Additional tenant metadata (optional)
     """
 
-    __slots__ = ("id", "name", "settings", "metadata", "_raw")
+    __slots__ = ("id", "name", "slug", "settings", "metadata", "_raw")
 
     def __init__(
         self,
         tenant_id: str,
         name: Optional[str] = None,
+        slug: Optional[str] = None,
         settings: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         raw: Any = None,
     ):
         self.id = tenant_id
         self.name = name or tenant_id
+        self.slug = slug or tenant_id
         self.settings = settings or {}
         self.metadata = metadata or {}
         self._raw = raw  # Original tenant object (e.g., Django model instance)
@@ -79,6 +81,11 @@ class TenantInfo:
     @property
     def raw(self) -> Any:
         """Access the original tenant object (e.g., model instance)."""
+        return self._raw
+
+    @property
+    def obj(self) -> Any:
+        """Alias for raw — access the original tenant object."""
         return self._raw
 
     def get_setting(self, key: str, default: Any = None) -> Any:
@@ -108,14 +115,14 @@ class TenantResolver(ABC):
         ...
 
     def get_config(self, key: str, default: Any = None) -> Any:
-        """Get a value from DJUST_CONFIG."""
+        """Get a value from DJUST_TENANTS."""
         try:
             from django.conf import settings
 
-            config = getattr(settings, "DJUST_CONFIG", {})
+            config = getattr(settings, "DJUST_TENANTS", {})
             return config.get(key, default)
         except Exception:
-            logger.debug("Could not load DJUST_CONFIG for key %s, using default", key)
+            logger.debug("Could not load DJUST_TENANTS for key %s, using default", key)
             return default
 
 
@@ -125,7 +132,7 @@ class SubdomainResolver(TenantResolver):
 
     Configuration::
 
-        DJUST_CONFIG = {
+        DJUST_TENANTS = {
             'TENANT_RESOLVER': 'subdomain',
             'TENANT_SUBDOMAIN_EXCLUDE': ['www', 'api', 'admin'],  # Ignored subdomains
             'TENANT_MAIN_DOMAIN': 'example.com',  # Optional: explicit main domain
@@ -136,8 +143,8 @@ class SubdomainResolver(TenantResolver):
         host = request.get_host().split(":")[0]  # Remove port
 
         # Get configured exclusions
-        exclude = self.get_config("TENANT_SUBDOMAIN_EXCLUDE", ["www", "api", "admin"])
-        main_domain = self.get_config("TENANT_MAIN_DOMAIN")
+        exclude = self.get_config("SUBDOMAIN_EXCLUDE", ["www", "api", "admin"])
+        main_domain = self.get_config("MAIN_DOMAIN")
 
         # Split host into parts
         parts = host.split(".")
@@ -170,7 +177,7 @@ class PathResolver(TenantResolver):
 
     Configuration::
 
-        DJUST_CONFIG = {
+        DJUST_TENANTS = {
             'TENANT_RESOLVER': 'path',
             'TENANT_PATH_POSITION': 1,  # Position in path (1 = first segment after /)
             'TENANT_PATH_EXCLUDE': ['admin', 'api', 'static'],  # Excluded paths
@@ -183,8 +190,8 @@ class PathResolver(TenantResolver):
             return None
 
         parts = path.split("/")
-        position = self.get_config("TENANT_PATH_POSITION", 1) - 1
-        exclude = self.get_config("TENANT_PATH_EXCLUDE", ["admin", "api", "static", "media"])
+        position = self.get_config("PATH_POSITION", 1) - 1
+        exclude = self.get_config("PATH_EXCLUDE", ["admin", "api", "static", "media"])
 
         if len(parts) <= position:
             return None
@@ -208,14 +215,14 @@ class HeaderResolver(TenantResolver):
 
     Configuration::
 
-        DJUST_CONFIG = {
+        DJUST_TENANTS = {
             'TENANT_RESOLVER': 'header',
             'TENANT_HEADER': 'X-Tenant-ID',  # Header name
         }
     """
 
     def resolve(self, request: "HttpRequest") -> Optional[TenantInfo]:
-        header_name = self.get_config("TENANT_HEADER", "X-Tenant-ID")
+        header_name = self.get_config("HEADER_NAME", "X-Tenant-ID")
 
         # Django converts headers to META keys
         # X-Tenant-ID -> HTTP_X_TENANT_ID
@@ -240,7 +247,7 @@ class SessionResolver(TenantResolver):
 
     Configuration::
 
-        DJUST_CONFIG = {
+        DJUST_TENANTS = {
             'TENANT_RESOLVER': 'session',
             'TENANT_SESSION_KEY': 'tenant_id',  # Session key
             'TENANT_JWT_CLAIM': 'tenant_id',  # JWT claim name (if using JWT)
@@ -248,7 +255,7 @@ class SessionResolver(TenantResolver):
     """
 
     def resolve(self, request: "HttpRequest") -> Optional[TenantInfo]:
-        session_key = self.get_config("TENANT_SESSION_KEY", "tenant_id")
+        session_key = self.get_config("SESSION_KEY", "tenant_id")
 
         # Try session first
         if hasattr(request, "session"):
@@ -259,7 +266,7 @@ class SessionResolver(TenantResolver):
 
         # Try JWT claims (if user has jwt_payload attribute)
         if hasattr(request, "user") and hasattr(request.user, "jwt_payload"):
-            jwt_claim = self.get_config("TENANT_JWT_CLAIM", "tenant_id")
+            jwt_claim = self.get_config("JWT_CLAIM", "tenant_id")
             tenant_id = request.user.jwt_payload.get(jwt_claim)
             if tenant_id:
                 logger.debug("Resolved tenant from JWT: %s", tenant_id)
@@ -281,7 +288,7 @@ class CustomResolver(TenantResolver):
 
     Configuration::
 
-        DJUST_CONFIG = {
+        DJUST_TENANTS = {
             'TENANT_RESOLVER': 'custom',
             'TENANT_CUSTOM_RESOLVER': 'myapp.tenants.resolve_tenant',
         }
@@ -313,7 +320,7 @@ class CustomResolver(TenantResolver):
         if self._resolver_cache is not None:
             return self._resolver_cache
 
-        resolver_path = self.get_config("TENANT_CUSTOM_RESOLVER")
+        resolver_path = self.get_config("CUSTOM_RESOLVER")
         if not resolver_path:
             return None
 
@@ -333,7 +340,7 @@ class ChainedResolver(TenantResolver):
 
     Configuration::
 
-        DJUST_CONFIG = {
+        DJUST_TENANTS = {
             'TENANT_RESOLVER': ['header', 'subdomain', 'session'],  # List of resolvers
         }
     """
@@ -369,12 +376,12 @@ def get_tenant_resolver() -> TenantResolver:
     try:
         from django.conf import settings
 
-        config = getattr(settings, "DJUST_CONFIG", {})
+        config = getattr(settings, "DJUST_TENANTS", {})
     except Exception:
-        logger.debug("Could not load DJUST_CONFIG for tenant resolver, using defaults")
+        logger.debug("Could not load DJUST_TENANTS for tenant resolver, using defaults")
         config = {}
 
-    resolver_config = config.get("TENANT_RESOLVER", "subdomain")
+    resolver_config = config.get("RESOLVER", "subdomain")
 
     # Handle list of resolvers (chained)
     if isinstance(resolver_config, (list, tuple)):
@@ -429,11 +436,11 @@ def resolve_tenant(request: "HttpRequest") -> Optional[TenantInfo]:
         try:
             from django.conf import settings
 
-            config = getattr(settings, "DJUST_CONFIG", {})
-            default_tenant = config.get("TENANT_DEFAULT")
+            config = getattr(settings, "DJUST_TENANTS", {})
+            default_tenant = config.get("DEFAULT_TENANT")
             if default_tenant:
                 return TenantInfo(tenant_id=default_tenant)
         except Exception:
-            logger.debug("Could not load DJUST_CONFIG for default tenant")
+            logger.debug("Could not load DJUST_TENANTS for default tenant")
 
     return tenant

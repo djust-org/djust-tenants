@@ -31,6 +31,13 @@ def projects(org1, org2):
     return (p1, p2, p3)
 
 
+@pytest.fixture(autouse=True)
+def clear_tenant():
+    """Ensure tenant is cleared after each test."""
+    yield
+    set_current_tenant(None)
+
+
 class TestTenantManager:
     """Tests for TenantManager."""
 
@@ -40,10 +47,10 @@ class TestTenantManager:
 
         # Set current tenant to org1
         tenant = TenantInfo(
-            id=str(p1.organization.id),
+            tenant_id=str(p1.organization.id),
             name=p1.organization.name,
             slug=p1.organization.slug,
-            obj=p1.organization,
+            raw=p1.organization,
         )
         set_current_tenant(tenant)
 
@@ -54,19 +61,16 @@ class TestTenantManager:
         assert p2 in result
         assert p3 not in result
 
-        # Clear tenant
-        set_current_tenant(None)
-
     def test_auto_filter_switches_with_tenant(self, projects):
         """Test that filter changes when tenant changes."""
         p1, p2, p3 = projects
 
         # Set to org1
         tenant1 = TenantInfo(
-            id=str(p1.organization.id),
+            tenant_id=str(p1.organization.id),
             name=p1.organization.name,
             slug=p1.organization.slug,
-            obj=p1.organization,
+            raw=p1.organization,
         )
         set_current_tenant(tenant1)
 
@@ -74,17 +78,14 @@ class TestTenantManager:
 
         # Switch to org2
         tenant2 = TenantInfo(
-            id=str(p3.organization.id),
+            tenant_id=str(p3.organization.id),
             name=p3.organization.name,
             slug=p3.organization.slug,
-            obj=p3.organization,
+            raw=p3.organization,
         )
         set_current_tenant(tenant2)
 
         assert Project.objects.count() == 1
-
-        # Clear tenant
-        set_current_tenant(None)
 
     def test_unscoped_bypasses_filter(self, projects):
         """Test that unscoped() bypasses tenant filtering."""
@@ -92,10 +93,10 @@ class TestTenantManager:
 
         # Set current tenant
         tenant = TenantInfo(
-            id=str(p1.organization.id),
+            tenant_id=str(p1.organization.id),
             name=p1.organization.name,
             slug=p1.organization.slug,
-            obj=p1.organization,
+            raw=p1.organization,
         )
         set_current_tenant(tenant)
 
@@ -104,9 +105,6 @@ class TestTenantManager:
 
         # Unscoped: see all
         assert Project.objects.unscoped().count() == 3
-
-        # Clear tenant
-        set_current_tenant(None)
 
     def test_no_tenant_returns_all(self, projects):
         """Test that no tenant returns all objects."""
