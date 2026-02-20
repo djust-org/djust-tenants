@@ -4,6 +4,10 @@ TenantMixin for djust LiveViews.
 Provides automatic tenant resolution and tenant-scoped context for
 multi-tenant SaaS applications.
 
+``self.tenant`` is resolved before any user code runs, whether the view is
+served over HTTP (``dispatch`` → ``get``/``post``) or over WebSocket
+(``mount`` called directly by ``LiveViewConsumer``).
+
 Example::
 
     from djust import LiveView
@@ -13,7 +17,7 @@ Example::
         template_name = 'dashboard.html'
 
         def mount(self, request, **kwargs):
-            # self.tenant is auto-populated from request
+            # self.tenant is already set — works for both HTTP and WebSocket
             self.items = Item.objects.filter(tenant=self.tenant.id)
 
         def get_context_data(self):
@@ -24,15 +28,16 @@ Example::
 
 Configuration::
 
-    DJUST_CONFIG = {
-        'TENANT_RESOLVER': 'subdomain',  # or 'path', 'header', 'session', 'custom'
-        'TENANT_REQUIRED': True,  # Raise error if no tenant found
-        'TENANT_CONTEXT_NAME': 'tenant',  # Name in template context
+    DJUST_TENANTS = {
+        'RESOLVER': 'subdomain',  # or 'path', 'header', 'session', 'custom'
+        'REQUIRED': True,  # Raise Http404 if no tenant found
+        'CONTEXT_NAME': 'tenant',  # Name in template context
     }
 """
 
 import logging
-from typing import Any, Dict, Optional, TYPE_CHECKING
+import warnings
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from .resolvers import TenantInfo, resolve_tenant
 
@@ -48,10 +53,18 @@ class TenantMixin:
 
     Features:
     - Auto-extracts tenant from request using configured resolver
-    - Makes tenant available as self.tenant in all methods
+    - Makes tenant available as self.tenant in all methods (HTTP and WebSocket)
     - Adds tenant to template context automatically
     - Provides tenant-scoped presence keys
     - Integrates with tenant-aware state backends
+
+    Lifecycle hooks (resolution order):
+    - mount()    — WebSocket/LiveView path; resolves tenant before the base
+                   LiveView.mount() runs, so self.tenant is ready in mount().
+    - dispatch() — HTTP path; resolves tenant before get()/post() handling.
+
+    Both hooks call the same idempotent ``_ensure_tenant()``, so a view served
+    over HTTP never resolves twice even if both hooks fire.
 
     Usage::
 
@@ -59,13 +72,13 @@ class TenantMixin:
             template_name = 'my_view.html'
 
             def mount(self, request, **kwargs):
-                # self.tenant is automatically set
+                # self.tenant is already set — safe on both HTTP and WebSocket
                 self.data = MyModel.objects.filter(tenant_id=self.tenant.id)
 
-    Configuration options:
-    - TENANT_RESOLVER: Resolution strategy ('subdomain', 'path', 'header', 'session', 'custom')
-    - TENANT_REQUIRED: If True, raises error when tenant cannot be resolved
-    - TENANT_CONTEXT_NAME: Name used in template context (default: 'tenant')
+    Configuration options (DJUST_TENANTS setting):
+    - RESOLVER: Resolution strategy ('subdomain', 'path', 'header', 'session', 'custom')
+    - REQUIRED: If True, raises Http404 when tenant cannot be resolved
+    - CONTEXT_NAME: Name used in template context (default: 'tenant')
     """
 
     # Class-level configuration
@@ -83,8 +96,24 @@ class TenantMixin:
         Get the current tenant.
 
         Returns:
-            TenantInfo object or None if not resolved
+            TenantInfo object or None if not resolved.
+
+        Raises a UserWarning in DEBUG mode if accessed before mount() or
+        dispatch() has run, so the silent-None bug surfaces immediately.
         """
+        if not self._tenant_resolved:
+            try:
+                from django.conf import settings
+
+                if getattr(settings, "DEBUG", False):
+                    warnings.warn(
+                        f"{self.__class__.__name__}.tenant accessed before resolution; "
+                        "call mount() or dispatch() first.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+            except Exception:
+                pass
         return self._tenant
 
     @tenant.setter
@@ -111,7 +140,8 @@ class TenantMixin:
         """
         Ensure tenant is resolved for this request.
 
-        Called automatically before mount() and event handlers.
+        Idempotent — guarded by ``_tenant_resolved`` so it is safe to call
+        from both mount() and dispatch() without double-resolving.
         """
         if self._tenant_resolved:
             return
@@ -185,9 +215,15 @@ class TenantMixin:
             return f"tenant:{self._tenant.id}"
         return ""
 
-    # Hook into LiveView lifecycle
+    # Hook into LiveView lifecycle — both paths call the same idempotent
+    # _ensure_tenant(), so double-resolution is never an issue.
+    def mount(self, request, **kwargs):
+        """Resolve tenant before mount (WebSocket/LiveView path)."""
+        self._ensure_tenant(request)
+        return super().mount(request, **kwargs)
+
     def dispatch(self, request, *args, **kwargs):
-        """Resolve tenant before dispatching."""
+        """Resolve tenant before dispatching (HTTP path)."""
         self._ensure_tenant(request)
         return super().dispatch(request, *args, **kwargs)
 

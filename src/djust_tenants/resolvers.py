@@ -22,7 +22,7 @@ Configuration in settings.py::
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
