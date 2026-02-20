@@ -85,6 +85,20 @@ class TenantMixin:
         Returns:
             TenantInfo object or None if not resolved
         """
+        if not self._tenant_resolved:
+            try:
+                from django.conf import settings as django_settings
+                if getattr(django_settings, "DEBUG", False):
+                    import warnings
+                    warnings.warn(
+                        f"{self.__class__.__name__}.tenant accessed before _ensure_tenant() "
+                        "was called. In the WebSocket (live) path, call "
+                        "self._ensure_tenant(request) at the start of mount(), or upgrade "
+                        "djust-tenants to a version that includes the mount() override.",
+                        stacklevel=2,
+                    )
+            except Exception:
+                pass
         return self._tenant
 
     @tenant.setter
@@ -186,6 +200,20 @@ class TenantMixin:
         return ""
 
     # Hook into LiveView lifecycle
+    def mount(self, request, **kwargs):
+        """Resolve tenant before mounting.
+
+        djust's WebSocket consumer calls mount() directly — it does not go
+        through Django's dispatch()/get()/post() chain. Without this override,
+        self._tenant is always None in the WebSocket (live) path even though
+        the HTTP pre-render path works correctly.
+
+        _ensure_tenant is idempotent (guarded by _tenant_resolved), so calling
+        it here is safe even when the HTTP path already called it via dispatch().
+        """
+        self._ensure_tenant(request)
+        return super().mount(request, **kwargs)
+
     def dispatch(self, request, *args, **kwargs):
         """Resolve tenant before dispatching."""
         self._ensure_tenant(request)
