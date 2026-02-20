@@ -88,17 +88,19 @@ class TenantMixin:
         if not self._tenant_resolved:
             try:
                 from django.conf import settings as django_settings
+
                 if getattr(django_settings, "DEBUG", False):
                     import warnings
+
                     warnings.warn(
                         f"{self.__class__.__name__}.tenant accessed before _ensure_tenant() "
-                        "was called. In the WebSocket (live) path, call "
-                        "self._ensure_tenant(request) at the start of mount(), or upgrade "
-                        "djust-tenants to a version that includes the mount() override.",
+                        "was called. This usually means mount() ran before TenantMixin could "
+                        "resolve the tenant. Check that TenantMixin appears before LiveView "
+                        "in the class MRO.",
                         stacklevel=2,
                     )
-            except Exception:
-                pass
+            except ImportError:
+                pass  # Django not available — skip warning
         return self._tenant
 
     @tenant.setter

@@ -56,7 +56,6 @@ class _OptionalTenantView(TenantMixin, _BaseView):
 _TENANT_SETTINGS = {
     "RESOLVER": "custom",
     "CUSTOM_RESOLVER": "tests.test_mixin._always_acme_resolver",
-    "REQUIRED": False,
 }
 
 
@@ -120,7 +119,9 @@ class TestTenantMixinMountPath:
         assert view.tenant is not None
         assert view.tenant.id == "acme"
 
-    @override_settings(DJUST_TENANTS={"RESOLVER": "subdomain", "MAIN_DOMAIN": "example.com", "REQUIRED": False})
+    @override_settings(
+        DJUST_TENANTS={"RESOLVER": "subdomain", "MAIN_DOMAIN": "example.com", "REQUIRED": False}
+    )
     def test_tenant_none_when_no_resolver_match(self, rf):
         """When no tenant is resolved and tenant_required=False, self.tenant is None (no raise)."""
         view = _OptionalTenantView()
@@ -129,6 +130,28 @@ class TestTenantMixinMountPath:
         view.mount(request)
 
         assert view.tenant is None
+
+    @override_settings(DJUST_TENANTS=_TENANT_SETTINGS)
+    def test_tenant_persists_across_method_calls(self, rf):
+        """Tenant resolved in mount() is still available in subsequent event handler calls.
+
+        This simulates the real WebSocket flow: mount() runs once, then event
+        handlers are invoked as separate method calls on the same view instance.
+        The tenant must not require re-resolution on each call.
+        """
+        view = _TenantView()
+        request = rf.get("/")
+        view.mount(request)
+
+        # Simulate an event handler accessing self.tenant after mount
+        assert view.tenant is not None
+        assert view.tenant.id == "acme"
+        assert view._tenant_resolved is True
+
+        # Access again — should return same object, not re-resolve
+        first = view.tenant
+        second = view.tenant
+        assert first is second
 
 
 class TestTenantMixinHttpPath:
@@ -161,7 +184,7 @@ class TestTenantMixinDebugWarning:
     """Verify that accessing self.tenant before resolution warns in DEBUG mode."""
 
     @override_settings(DEBUG=True)
-    def test_warns_in_debug_mode_before_resolution(self, rf):
+    def test_warns_in_debug_mode_before_resolution(self):
         view = _TenantView()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -171,7 +194,7 @@ class TestTenantMixinDebugWarning:
         assert "_ensure_tenant" in str(caught[0].message)
 
     @override_settings(DEBUG=False)
-    def test_no_warning_in_production(self, rf):
+    def test_no_warning_in_production(self):
         view = _TenantView()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
